@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Add a vector tile source</title>
+    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+    <link href="https://api.mapbox.com/mapbox-gl-js/v2.7.0/mapbox-gl.css" rel="stylesheet">
+    <script src="https://api.mapbox.com/mapbox-gl-js/v2.7.0/mapbox-gl.js"></script>
+    <script src="https://unpkg.com/h3-js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+        }
+
+        #map {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 100%;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    <script>
+        mapboxgl.accessToken = 'pk.eyJ1IjoiaHVuZ3VuY2hhaW5lZCIsImEiOiJja3lvaXl6czAwMGtnMnVtZG93dm1sY2N4In0.muP3gQsjSpZUglqmEvyxLA';
+        const map = new mapboxgl.Map({
+            container: 'map',
+            style: 'mapbox://styles/mapbox/light-v10',
+            zoom: 13,
+            center: [-122.447303, 37.753574]
+        });
+
+        map.on('load', () => {
+
+            map.addSource('hex', {
+                'type': 'geojson',
+                'data': {
+                    "type": "FeatureCollection",
+                    "features": []
+                }
+            });
+
+            // The feature-state dependent fill-opacity expression will render the hover effect
+            // when a feature's hover state is set to true.
+            map.addLayer({
+                'id': 'hex-fills',
+                'type': 'fill',
+                'source': 'hex',
+                'layout': {},
+                'paint': {
+                    'fill-color': '#627BC1',
+                    'fill-opacity': [
+                        'case',
+                        ['boolean', ['feature-state', 'hover'], false],
+                        1,
+                        0.5
+                    ]
+                }
+            });
+
+            map.addLayer({
+                'id': 'hex-borders',
+                'type': 'line',
+                'source': 'hex',
+                'layout': {},
+                'paint': {
+                    'line-color': '#627BC1',
+                    'line-width': 2
+                }
+            });
+
+            // When the user moves their mouse over the state-fill layer, we'll update the
+            // feature state for the feature under the mouse.
+            map.on('mousemove', 'hex-fills', (e) => {
+                if (e.features.length > 0) {
+                    if (hoveredId !== null) {
+                        map.setFeatureState(
+                            { source: 'hex', id: hoveredId },
+                            { hover: false }
+                        );
+                    }
+                    hoveredId = e.features[0].id;
+                    map.setFeatureState(
+                        { source: 'hex', id: hoveredId },
+                        { hover: true }
+                    );
+                }
+            });
+
+            // When the mouse leaves the state-fill layer, update the feature state of the
+            // previously hovered feature.
+            map.on('mouseleave', 'hex-fills', () => {
+                if (hoveredId !== null) {
+                    map.setFeatureState(
+                        { source: 'hex', id: hoveredId },
+                        { hover: false }
+                    );
+                }
+                hoveredId = null;
+            });
+
+            map.on("dragend", () => {
+
+                const bounds = map.getBounds().toArray();
+                console.log('bounds', bounds);
+
+                const area = turf.bboxPolygon(bounds.flat());
+                console.log('area', JSON.stringify(area));
+
+                fillArea(area.geometry.coordinates[0].map(i => i.reverse()));
+
+            })
+
+
+        });
+
+
+
+
+
+        function fillArea(polygon) {
+            console.log('polygon', polygon);
+
+            const res = 7;
+            const h3hex = h3.polyfill(polygon, res);
+
+            const area = h3hex.map(poly => h3.h3ToGeoBoundary(poly, { formatAsGeoJson: true }))
+
+            var polygon = area.map(poly => {
+                return turf.polygon([poly], { name: 'poly1' });
+            })
+            const collection = turf.featureCollection(polygon)
+            map.getSource("hex").setData(collection)
+        }
+
+
+    </script>
+
+</body>
+
+</html>

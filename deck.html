@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Add a vector tile source</title>
+    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+    <link href="https://api.mapbox.com/mapbox-gl-js/v2.7.0/mapbox-gl.css" rel="stylesheet">
+    <script src="https://api.mapbox.com/mapbox-gl-js/v2.7.0/mapbox-gl.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+
+    <script src="https://unpkg.com/h3-js"></script>
+    <script src="https://unpkg.com/deck.gl@^8.0.0/dist.min.js"></script>
+
+    <!-- Load the `mapbox-gl-geocoder` plugin. -->
+    <script
+        src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v4.7.2/mapbox-gl-geocoder.min.js"></script>
+    <link rel="stylesheet"
+        href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v4.7.2/mapbox-gl-geocoder.css"
+        type="text/css">
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Verdana, sans-serif;
+        }
+
+        #map {
+            min-height: 60%;
+            width: 100%;
+        }
+
+        #info {
+            width: 100%;
+            overflow-y: scroll;
+        }
+
+        #main {
+            display: flex;
+            height: 100vh;
+            width: 100vw;
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .buy-button {
+            color: white;
+            padding: 10px 20px;
+            background-color: #363636;
+            cursor: pointer;
+        }
+
+        table.customTable {
+            width: 100%;
+            background-color: #FFFFFF;
+            border-collapse: collapse;
+            border-width: 0px;
+            border-color: #7EA8F8;
+            border-style: solid;
+            color: #000000;
+        }
+
+        table.customTable td,
+        table.customTable th {
+            padding: 5px;
+            text-align: left;
+        }
+
+        table.customTable tr:nth-of-type(even) {
+            background-color: #ccc;
+        }
+
+        table.customTable thead {
+            background-color: #5d6e91;
+            color: white
+        }
+    </style>
+</head>
+
+<body>
+    <div id="main">
+        <div id="map"></div>
+        <div id="info"></div>
+    </div>
+    <script>
+        const { MapboxLayer, H3HexagonLayer, GreatCircleLayer } = deck;
+        const selectedH3Indices = [];
+        const infoDiv = document.getElementById("info");
+
+        mapboxgl.accessToken = 'pk.eyJ1IjoiaHVuZ3VuY2hhaW5lZCIsImEiOiJja3lvaXl6czAwMGtnMnVtZG93dm1sY2N4In0.muP3gQsjSpZUglqmEvyxLA';
+        const map = new mapboxgl.Map({
+            container: 'map',
+            style: 'mapbox://styles/mapbox/light-v10',
+            zoom: 16,
+            center: [-122.447303, 37.753574]
+        });
+
+        // Add the control to the map.
+        map.addControl(
+            new MapboxGeocoder({
+                accessToken: mapboxgl.accessToken,
+                mapboxgl: mapboxgl
+            })
+        );
+
+        map.on('load', () => {
+
+            const data = getH3IndicesForBB()
+            console.log('data', data);
+            const hexLayer = new MapboxLayer({
+                data,
+                type: H3HexagonLayer,
+                id: "h3-hexagon-layer",
+                pickable: true,
+                wireframe: true,
+                filled: true,
+                extruded: true,
+                elevationScale: 0,
+                getHexagon: (d) => d,
+                autoHighlight: true,
+                getLineColor: [0, 0, 0, 20],
+                getFillColor: (d) => {
+                    const isSelected = selectedH3Indices.includes(d)
+                    // rgba - rgb=0, but a=1 to make the hex clickable
+                    return isSelected ? [242, 141, 59, 50] : [0, 0, 0, 1]
+                },
+                opacity: 1,
+                //   onHover: (info) => console.log("hover", info),
+                onClick: (info) => {
+                    console.log('info', info);
+                    console.log('info', selectedH3Indices);
+                    const isAlreadySelected = selectedH3Indices.includes(info.object)
+                    if (isAlreadySelected) {
+                        const index = selectedH3Indices.indexOf(info.object);
+                        if (index > -1) {
+                            selectedH3Indices.splice(index, 1);
+                        }
+                    } else {
+                        selectedH3Indices.push(info.object)
+                    }
+                    update()
+                },
+            });
+            map.addLayer(hexLayer);
+
+
+            map.on("moveend", update)
+
+
+            function update() {
+
+                if (map.getZoom() < 11) {
+                    alert("Please, zoom in to see the hexagons")
+                    return;
+                }
+
+                const data = getH3IndicesForBB(resolution = 10);
+                hexLayer.setProps({ data: data })
+
+                const html = selectedH3Indices.map((item, key) => {
+                    return `
+                            <tr>
+                            <td>${item}</td>
+                            <td>1</td>
+                            <td>Name</td>
+                            <td>Price</td>
+                            <td><button class="buy-button">Buy</button></td>
+                            </tr>
+                        `;
+                }).join("")
+                //update Info div 
+                infoDiv.innerHTML = `<table class="customTable">
+                                            <thead>
+                                <tr class="w3-light-grey">
+                                    <th>Item no</th>
+                                    <th>Tier</th>
+                                    <th>Name</th>
+                                    <th>Price</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            ${html}
+                            </tbody>
+                        </table>`
+            }
+        });
+
+
+
+        function getH3IndicesForBB(resolution = 10) {
+            const bounds = map.getBounds();
+            const nw = bounds.getNorthWest().toArray().reverse()
+            const ne = bounds.getNorthEast().toArray().reverse()
+            const sw = bounds.getSouthWest().toArray().reverse()
+            const se = bounds.getSouthEast().toArray().reverse()
+            const hexes = h3.polyfill([nw, ne, se, sw], resolution)
+            return hexes
+        }
+    </script>
+
+</body>
+
+</html>
