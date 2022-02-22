@@ -100,7 +100,15 @@
         map.addControl(
             new MapboxGeocoder({
                 accessToken: mapboxgl.accessToken,
-                mapboxgl: mapboxgl
+                flyTo: {
+                    speed: 3,
+                    curve: 1,
+                    zoom: 13,
+                    easing: function (t) {
+                        return t;
+                    }
+                },
+                mapboxgl: mapboxgl,
             })
         );
 
